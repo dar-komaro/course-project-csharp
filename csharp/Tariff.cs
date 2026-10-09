@@ -36,6 +36,7 @@
                 throw new ArgumentException("Название тарифа не может быть пустым");
             Name = name;
             PriceUnit = priceUnit;
+            Console.WriteLine($"[+Sensor] Тариф \"{Name}\" создан.");
         }
 
         public override string ToString() => $"Тариф: {Name}, Стоимость кВт*ч: {PriceUnit} руб.";
