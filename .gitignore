@@ -1,0 +1,39 @@
+# C / C++ build & system files
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.pdb
+*.idb
+*.ilk
+build/
+Debug/
+Release/
+x64/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# .NET / C# build results & caches
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+[Pp]ackages/
+*.nupkg
+
+# IDEs and editors (Visual Studio, VS Code, JetBrains)
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
