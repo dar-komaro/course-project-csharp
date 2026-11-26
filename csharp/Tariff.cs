@@ -1,4 +1,5 @@
-﻿namespace Greenhouse
+﻿using System;
+namespace Greenhouse
 {
     public class Tariff
     {
@@ -36,10 +37,13 @@
                 throw new ArgumentException("Название тарифа не может быть пустым");
             Name = name;
             PriceUnit = priceUnit;
-            Console.WriteLine($"[+Sensor] Тариф \"{Name}\" создан.");
+            Console.WriteLine($"[+Tariff] Тариф \"{Name}\" создан.");
         }
 
         public override string ToString() => $"Тариф: {Name}, Стоимость кВт*ч: {PriceUnit} руб.";
+
+        public void LogSensorRegistration(BaseSensor sensor) =>
+            Console.WriteLine($"[Тариф] К плану успешно привязан {sensor.Name}");
 
         public double CalculateCost(int cnt) => cnt <= 0 ? 0.0 : _priceUnit * cnt;
     }

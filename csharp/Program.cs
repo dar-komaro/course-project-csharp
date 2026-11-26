@@ -1,5 +1,8 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using System.IO;
+using static System.Math;
+using SensorArray = System.Collections.Generic.List<Greenhouse.BaseSensor>;
 
 namespace Greenhouse
 {
@@ -9,84 +12,74 @@ namespace Greenhouse
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-            Console.WriteLine("Композиция и Агрегация\n");
-            Tariff tar = new Tariff("Обычный", 1.25);
-            Greenhouse greenhouse = new Greenhouse("Теплица 1", 22.0, tar);
-            Console.WriteLine(greenhouse);
+            var tariff = new Tariff("Тариф1", 1.25);
+            Console.WriteLine();
 
-            Console.WriteLine("\nПроверка правила\n");
-            Sensor d1 = greenhouse[1];
+            // Массив датчиков разных наследников — работа через базовый тип
+            Console.WriteLine("\nМассив датчиков \n");
+            SensorArray sensors = new()
+            {
+                new TemperatureSensor("T-01", tariff, 23.5),
+                new HumiditySensor("H-01", tariff, 60.0),
+                new LightSensor("L-01", tariff, 4500.0),
+                new FertilizerSensor("F-01", tariff, 50.0),
+            };
+            foreach (var s in sensors)
+            {
+                s.TakeMeasurement();
+                Console.WriteLine($"  {s.PrintInfo()}");
+            }
+
+            // Поверхностная и глубокая копия
+            Console.WriteLine("\nКопирование\n");
+            var original = new HumiditySensor("H-copy", tariff, 60.0);
+            var shallow = original.ShallowCopy();
+            var deep = original.DeepCopy();
+
+            Console.WriteLine($"shallow: общая ссылка = {ReferenceEquals(original.Tariff, shallow.Tariff)}");
+            shallow.Tariff.UpdatePrice(99.9);
+            Console.WriteLine($"  оригинал = {original.Tariff.PriceUnit} (изменился)\n");
+
+            Console.WriteLine($"deep: общая ссылка = {ReferenceEquals(original.Tariff, deep.Tariff)}");
+            deep.Tariff.UpdatePrice(5.0);
+            Console.WriteLine($"  оригинал = {original.Tariff.PriceUnit} (не изменился)\n");
+
+            // Equals / GetHashCode
+            Console.WriteLine("=== 3. Equals / GetHashCode ===");
+            var t1 = new TemperatureSensor("T-dup", tariff, 23.5);
+            var t2 = new TemperatureSensor("T-dup", tariff, 45.0);
+            Console.WriteLine($"Equals: {t1.Equals(t2)} | HashCode: {t1.GetHashCode() == t2.GetHashCode()}");
+            Console.WriteLine($"HashSet.Count = {new HashSet<TemperatureSensor> { t1, t2 }.Count} (дубль)\n");
+
+            // this
+            Console.WriteLine("\n this \n");
+            new TemperatureSensor("Датчик-привязка", tariff, 25.0).RegisterInTariff(tariff);
+            Console.WriteLine();
+
+            // Статические члены
+            Console.WriteLine("\nСтатика \n");
+            Console.WriteLine($"NextInventoryNumber() = {BaseSensor.NextInventoryNumber()}\n");
+
+            // Теплица
+            Console.WriteLine("\nТеплица \n");
+            var greenhouse = new Greenhouse("Теплица1", 20.0, tariff);
+            greenhouse.PrintStatus();
             greenhouse.FullInspection();
+            greenhouse.PrintStatus();
+            Console.WriteLine($"\n[0]: {greenhouse[0].PrintInfo()}");
+            Console.WriteLine($"ToString: {greenhouse}");
 
-            // Разряжаю батарею
-            for (int i = 0; i < 20; i++)
+            if (greenhouse[0] is TemperatureSensor temp)
             {
-                d1.TakeMeasurement();
+                temp.TargetTemp = 26.0;
+                temp.TakeMeasurement();
+                Console.WriteLine($"  после смены TargetTemp: {temp.PrintInfo()}");
             }
+            Console.WriteLine();
 
-            // Попытка опроса разряженного датчика
-            Console.WriteLine("\nПопытка опроса с разряженной батареей:\n");
-            greenhouse.FullInspection();
-
-            // Заряжаем датчик обратно
-            d1.Recharge();
-
-            Console.WriteLine("\nСсылки и копии\n");
-            Tariff t2 = tar;
-            t2.UpdatePrice(2.5); // Меняю цену
-            Console.WriteLine($"t2 == tar: {t2 == tar}");
-
-            // Структура
-            Point p1 = new Point(10, 20);
-            Point p2 = p1;
-            p2.X = 99;
-            Console.WriteLine($"Структура p1.X = {p1.X}, p2.X = {p2.X}");
-
-            Console.WriteLine("\nIDisposable и using\n");
-            using (var log = new GreenhouseLog("Журнал теплицы"))
-            {
-                log.Write("Выполнен плановый осмотр");
-            }
-
-            Console.WriteLine("\nСборщик мусора\n");
-            WeakReference<Tariff> watcher = CreateTemporaryTariff();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-
-            Console.WriteLine($"Объект жив после сборки мусора {watcher.TryGetTarget(out _)}\n");
+            // 8. using static System.Math
+            Console.WriteLine("\nusing static System.Math\n");
+            Console.WriteLine($"Clamp(150, 0, 100) = {Clamp(150, 0, 100)} | Abs(-42) = {Abs(-42)}");
         }
-
-
-        // Пример структуры для пункта со сравнением классов и структур
-        public struct Point
-        {
-            public int X;
-            public int Y;
-            public Point(int x, int y) { X = x; Y = y; }
-        }
-
-        //освобождение ресурса
-        public sealed class GreenhouseLog : IDisposable
-        {
-            private readonly string _title;
-            public GreenhouseLog(string title)
-            {
-                _title = title;
-                Console.WriteLine($"[+] Ресурс открыт: {_title}");
-            }
-            public void Write(string message) => Console.WriteLine($"Запись в журнал: {message}");
-            public void Dispose() => Console.WriteLine($"[-] Ресурс освобожден: {_title}");
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static WeakReference<Tariff> CreateTemporaryTariff()
-        {
-            Tariff temp = new Tariff("Временный тариф", 10.0);
-            var watcher = new WeakReference<Tariff>(temp);
-            Console.WriteLine($"Объект жив {watcher.TryGetTarget(out _)}");
-            return watcher;
-        }
-
     }
 }
