@@ -20,15 +20,13 @@ namespace Greenhouse
             }
         }
 
-        public bool UpdatePrice(double newPrice)
+        public void UpdatePrice(double newPrice)
         {
             if (newPrice < 0.0)
             {
-                return false;
+                throw new ArgumentOutOfRangeException(nameof(newPrice), "Отрицательная цена не допустима!");
             }
-
             PriceUnit = newPrice;
-            return true;
         }
 
         public Tariff(string name, double priceUnit)
