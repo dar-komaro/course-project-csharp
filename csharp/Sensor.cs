@@ -2,13 +2,14 @@
 
 namespace Greenhouse
 {
-    public abstract class BaseSensor
+    public abstract class BaseSensor : IComparable<BaseSensor>
     {
         private static int _lastNumber = 0;
         public static int NextInventoryNumber() => ++_lastNumber;
 
         private int _battery;
         private Tariff _tariff;
+        private IMeasurementStrategy _strategy = new StandardMode();
 
         public string Name { get; init; }
         public int InventoryNumber { get; init; }
@@ -23,6 +24,16 @@ namespace Greenhouse
         {
             get => _tariff;
             set => _tariff = value ?? throw new ArgumentNullException(nameof(value), "Тариф не может быть null");
+        }
+
+        public IMeasurementStrategy Strategy
+        {
+            get => _strategy;
+            set
+            {
+                _strategy = value ?? throw new ArgumentNullException(nameof(value), "Стратегия не может быть null");
+                Console.WriteLine($"[Конфигурация] Датчик \"{Name}\" переключен в режим: {_strategy.ModeName}");
+            }
         }
 
         protected BaseSensor()
@@ -56,9 +67,18 @@ namespace Greenhouse
             Console.WriteLine($"Датчик {Name} заряжен до 100% \n");
         }
 
+        // Невиртуальный метод раннее связывание
+        public string GetDeviceCategory() => "Базовый измерительный прибор";
+
         public virtual string PrintInfo()
         {
             return $"Датчик: {Name} | Заряд: {Battery}% | Инв. №: #{InventoryNumber}";
+        }
+
+        public int CompareTo(BaseSensor? other)
+        {
+            if (other is null) return 1;
+            return string.Compare(Name, other.Name, StringComparison.CurrentCulture);
         }
 
     }
@@ -93,16 +113,18 @@ namespace Greenhouse
 
         public override bool TakeMeasurement()
         {
-            if (Battery <= 0)
-            {
-                Console.WriteLine($"[Ошибка] Датчик температуры #{InventoryNumber} разряжен!");
-                return false;
-            }
-            Battery -= 5;
-            _currentTemp = _targetTemp + (Random.Shared.Next(5) - 2) * 0.5;
-            Console.WriteLine($"[Замер Темп] {Name} замерил температуру: факт = {_currentTemp:F1} °C (Цель: {_targetTemp:F1} °C)");
+            int drain = Strategy.BatteryDrain;
+            if (Battery < drain)
+                throw new LowBatteryException(Name, Battery);
+
+            Battery -= drain;
+            _currentTemp = Strategy.ComputeValue(_targetTemp);
+            Console.WriteLine($"[Замер Темп | Режим: {Strategy.ModeName}] {Name} замерил: {_currentTemp:F1} °C (остаток заряда: {Battery}%)");
             return true;
         }
+
+        // Скрытие метода базового класса через new -> РАННЕЕ связывание
+        public new string GetDeviceCategory() => "Датчик температуры";
 
         public override string PrintInfo() =>
             base.PrintInfo() + $" | Температура: факт = {_currentTemp:F1} °C (Цель: {_targetTemp:F1} °C)";
@@ -143,14 +165,13 @@ namespace Greenhouse
 
         public override bool TakeMeasurement()
         {
-            if (Battery <= 0)
-            {
-                Console.WriteLine($"[Ошибка] Датчик влажности #{InventoryNumber} разряжен!");
-                return false;
-            }
-            Battery -= 4;
-            _currentHumidity = _targetHumidity + (Random.Shared.Next(10) - 5) * 0.8;
-            Console.WriteLine($"[Замер Влажности] {Name} замерил влажность: факт = {_currentHumidity:F1}% (Цель: {_targetHumidity:F1}%)");
+            int drain = Strategy.BatteryDrain;
+            if (Battery < drain)
+                throw new LowBatteryException(Name, Battery);
+
+            Battery -= drain;
+            _currentHumidity = Strategy.ComputeValue(_targetHumidity);
+            Console.WriteLine($"[Замер Влажности | Режим: {Strategy.ModeName}] {Name} замерил: {_currentHumidity:F1}% (остаток заряда: {Battery}%)");
             return true;
         }
 
@@ -169,10 +190,12 @@ namespace Greenhouse
         }
     }
 
-    public sealed class LightSensor : BaseSensor
+    public sealed class LightSensor : BaseSensor, ICalibratable
     {
         private double _currentLight = 5000.0;
         private double _targetLight = 6000.0;
+
+        public bool IsCalibrated { get; private set; } = false;
 
         public LightSensor() : base()
         {
@@ -199,25 +222,39 @@ namespace Greenhouse
 
         public override bool TakeMeasurement()
         {
-            if (Battery <= 0)
-            {
-                Console.WriteLine($"[Ошибка] Датчик освещенности #{InventoryNumber} разряжен!");
-                return false;
-            }
-            Battery -= 6;
-            _currentLight = _targetLight + (Random.Shared.Next(200) - 100);
-            Console.WriteLine($"[Замер Света] {Name} замерил свет: факт = {_currentLight:F0} лк (Цель: {_targetLight:F0} лк)");
+            int drain = Strategy.BatteryDrain;
+            if (Battery < drain)
+                throw new LowBatteryException(Name, Battery);
+
+            Battery -= drain;
+            double deviation = Strategy.ComputeValue(_targetLight) - _targetLight;
+            _currentLight = _targetLight + deviation * 50.0;
+            Console.WriteLine($"[Замер Света | Режим: {Strategy.ModeName}] {Name} замерил: {_currentLight:F0} лк (остаток заряда: {Battery}%)");
             return true;
         }
+
+        public void Calibrate(double offset)
+        {
+            if (offset < -100.0 || offset > 100.0)
+                throw new InvalidCalibrationException(Name, offset);
+
+            _currentLight += offset;
+            IsCalibrated = true;
+            Console.WriteLine($"[Калибровка] Датчик света \"{Name}\" откалиброван (поправка: {offset} лк).");
+        }
+
+        public new string GetDeviceCategory() => "Оптический датчик освещенности";
 
         public override string PrintInfo() =>
             base.PrintInfo() + $" | Свет: {_currentLight:F0} / {_targetLight:F0} лк";
     }
 
-    public class FertilizerSensor : BaseSensor
+    public class FertilizerSensor : BaseSensor, ICalibratable
     {
         private double _currentFertilizer = 50.0;
         private double _targetFertilizer = 60.0;
+
+        public bool IsCalibrated { get; private set; } = false;
 
         public FertilizerSensor() : base()
         {
@@ -244,16 +281,24 @@ namespace Greenhouse
 
         public override bool TakeMeasurement()
         {
-            if (Battery <= 0)
-            {
-                Console.WriteLine($"[Ошибка] Датчик удобрений #{InventoryNumber} разряжен!");
-                return false;
-            }
-            Battery -= 3;
-            _currentFertilizer = _targetFertilizer + (Random.Shared.Next(6) - 3) * 0.5;
-            Console.WriteLine($"[Замер Удобрений] {Name} замерил уровень: факт = {_currentFertilizer:F1}% (Цель: {_targetFertilizer:F1}%)");
+            int drain = Strategy.BatteryDrain;
+            if (Battery < drain)
+                throw new LowBatteryException(Name, Battery);
+            Battery -= drain;
+            _currentFertilizer = Strategy.ComputeValue(_targetFertilizer);
+            Console.WriteLine($"[Замер Удобрений | Режим: {Strategy.ModeName}] {Name} замерил уровень: {_currentFertilizer:F1}% (остаток заряда: {Battery}%)");
             return true;
         }
+
+        public void Calibrate(double offset)
+        {
+            if (offset < -10.0 || offset > 10.0)
+                throw new InvalidCalibrationException(Name, offset);
+            _currentFertilizer += offset;
+            IsCalibrated = true;
+            Console.WriteLine($"[Калибровка] Датчик удобрений \"{Name}\" откалиброван (поправка: {offset}%).");
+        }
+
 
         public override string PrintInfo() =>
             $"Прибор удобрений \"{Name}\" | Заряд: {Battery}% | Инв. №: #{InventoryNumber} | Удобрения: {_currentFertilizer:F1} / {_targetFertilizer:F1} %";
